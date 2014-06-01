@@ -1,0 +1,496 @@
+<?xml version="1.0" encoding="utf-8"?>
+<addon addon_id="bdPaygate" title="[bd] Paygates" version_string="1.4.0b" version_id="24" url="" install_callback_class="bdPaygate_Installer" install_callback_method="install" uninstall_callback_class="bdPaygate_Installer" uninstall_callback_method="uninstall">
+  <admin_navigation>
+    <navigation navigation_id="bdPaygate_logs" parent_navigation_id="logs" display_order="9999" link="logs/bdpaygate" admin_permission_id="viewLogs" debug_only="0" hide_no_children="0"/>
+  </admin_navigation>
+  <admin_permissions/>
+  <admin_style_properties/>
+  <admin_templates>
+    <template title="bdpaygate.css"><![CDATA[.FilterList .listItem.bdPaygate_LogEntry_Error h4 {
+	background: red;
+}
+
+.FilterList .listItem.bdPaygate_LogEntry_Error:hover h4 {
+	background: red;
+}
+
+	.FilterList .listItem.bdPaygate_LogEntry_Error a,
+	.FilterList .listItem.bdPaygate_LogEntry_Error .secondRow,
+	.FilterList .listItem.bdPaygate_LogEntry_Error .faint {
+		color: white;
+	}
+
+]]></template>
+    <template title="bdpaygate_log_clear"><![CDATA[<xen:title>{xen:phrase bdpaygate_log_clear}</xen:title>
+<xen:require css="delete_confirmation.css" />
+
+<xen:form action="{xen:adminlink 'logs/bdpaygate/clear'}" class="deleteConfirmForm formOverlay">
+
+	<p>{xen:phrase bdpaytate_sure_you_want_to_clear_log}</p>
+	
+	<xen:submitunit save="{xen:phrase bdpaygate_log_clear}" />
+	
+	<input type="hidden" name="_xfConfirm" value="1" />
+</xen:form>]]></template>
+    <template title="bdpaygate_log_list"><![CDATA[<xen:title>{xen:phrase bdpaygate_logs}</xen:title>
+
+<xen:if is="{$entries}"><xen:topctrl><a href="{xen:adminlink logs/bdpaygate/clear}" class="button OverlayTrigger">{xen:phrase bdpaygate_log_clear}</a></xen:topctrl></xen:if>
+
+<xen:require css="filter_list.css" />
+<xen:require css="bdpaygate.css" />
+<xen:require js="js/xenforo/filter_list.js" />
+
+<xen:if is="{$entries}">
+
+	<div class="section">
+	
+		<h2 class="subHeading">
+			{xen:phrase bdpaygate_logs}
+		</h2>
+	
+		<ol class="FilterList secondRow">
+			<xen:foreach loop="$entries" value="$entry">
+				<xen:listitem id="{$entry.error_id}"
+					href="{xen:adminlink logs/bdpaygate, '', 'id={$entry.log_id}'}"
+					linkclass="OverlayTrigger"
+					class="{xen:if '{$entry.log_type} != "accepted"', 'bdPaygate_LogEntry_Error'}">
+					<xen:label>{$entry.log_message}
+						<span class="secondRow">
+							<xen:datetime time="{$entry.log_date}" class="faint" />
+							-
+							{$entry.processor}
+							({$entry.log_type})
+						</span>
+					</xen:label>
+				</xen:listitem>
+			</xen:foreach>
+		</ol>
+	
+		<p class="sectionFooter">{xen:phrase showing_x_of_y_items, 'count=<span class="FilterListCount">{xen:count $entries}</span>', 'total={xen:number $total}'}</p>
+	
+	</div>
+		
+	<xen:adminpagenav page="{$page}" perpage="{$perPage}" total="{$total}" link="logs/bdpaygate" />
+
+<xen:else />
+	<div class="noResults">{xen:phrase bdpaygate_no_transaction_have_been_logged}</div>
+</xen:if>]]></template>
+    <template title="bdpaygate_log_view"><![CDATA[<xen:title>{xen:phrase bdpaygate_log}</xen:title>
+
+<div class="section">
+	<div class="overlayScroll">
+		<table width="100%">
+		<tr>
+			<th class="subHeading">{xen:phrase bdpaygate_log_processor_info}</th>
+		</tr>
+		<tr>
+			<td class="primaryContent">
+				<span class="dimmed">{$entry.processor}:</span> {$entry.transaction_id}
+				<div class="muted"><xen:datetime time="{$entry.log_date}" /></div>
+			</td>
+		</tr>
+		<tr>
+			<th class="subHeading">{xen:phrase bdpaygate_log_result}</th>
+		</tr>
+		<tr>
+			<td class="primaryContent">{$entry.log_message} ({$entry.log_type})</td>
+		</tr>
+		<tr>
+			<th class="subHeading">{xen:phrase bdpaygate_log_details}</th>
+		</tr>
+		<tr>
+			<td>
+				<table width="100%">
+					<xen:foreach loop="$entry.logDetails" key="$key" value="$value">
+						<tr>
+							<td class="primaryContent">{$key}</td>
+							<td class="primaryContent">
+								<xen:if is="is_array({$value})">
+									{xen:helper dump, $value}
+								<xen:else />
+									{$value}
+								</xen:if>
+							</td>
+						</tr>
+					</xen:foreach>
+				</table>
+			</td>
+		</tr>
+		</table>
+	</div>
+</div>]]></template>
+  </admin_templates>
+  <admin_template_modifications>
+    <modification template="user_upgrade_edit" modification_key="bdpaygate_user_upgrade_edit" description="Replace currency list with ours." execution_order="10" enabled="1" action="preg_replace">
+      <find><![CDATA[#(<xen:select name="cost_currency"[^>]+>)(.|\r|\n)+?</xen:select>#]]></find>
+      <replace><![CDATA[$1
+	<xen:options source="$bdPaygate_currencies" />
+</xen:select>]]></replace>
+    </modification>
+  </admin_template_modifications>
+  <code_events>
+    <event event_id="load_class_bdpaygate_processor"><![CDATA[<p>Called when instantiating a processor. This event can be used to extend the class that will be instantiated dynamically.</p>
+
+<p>Callback signature:</p>
+<blockquote><code>$class, <em>array</em> &$extend</code></blockquote>
+
+<p>Arguments:</p>
+<ol>
+	<li><code><em>string</em> $class</code> - the name of the class to be created</li>
+	<li><code><em>array</em> &$extend</code> - a modifiable list of classes that wish to extend the class. See below.</li>
+</ol>
+
+<p>To use this event properly, determine if the class is one you want to extend. If so, add a new entry to $extend with the name of the class that should extend it. This class MUST be defined as follows:</p>
+
+<pre>class My_Class_Name extends XFCP_My_Class_Name
+{
+	// functionality to extend/override
+}</pre>
+
+<p>This class must extend the non-existent XFCP_x class. This will be resolved at run time.</p>]]></event>
+  </code_events>
+  <code_event_listeners>
+    <listener event_id="bdshop_stock_pricing_get_systems" execute_order="10" callback_class="bdPaygate_Listener" callback_method="bdshop_stock_pricing_get_systems" active="1" hint="" description=""/>
+    <listener event_id="file_health_check" execute_order="10" callback_class="bdPaygate_Listener" callback_method="file_health_check" active="1" hint="" description=""/>
+    <listener event_id="load_class_controller" execute_order="10" callback_class="bdPaygate_Listener" callback_method="load_class" active="1" hint="" description=""/>
+    <listener event_id="load_class_datawriter" execute_order="10" callback_class="bdPaygate_Listener" callback_method="load_class" active="1" hint="" description=""/>
+    <listener event_id="load_class_model" execute_order="10" callback_class="bdPaygate_Listener" callback_method="load_class" active="1" hint="" description=""/>
+    <listener event_id="load_class_view" execute_order="10" callback_class="bdPaygate_Listener" callback_method="load_class" active="1" hint="" description=""/>
+    <listener event_id="template_create" execute_order="10" callback_class="bdPaygate_Listener" callback_method="template_create" active="1" hint="" description=""/>
+    <listener event_id="template_hook" execute_order="10" callback_class="bdPaygate_Listener" callback_method="template_hook" active="1" hint="" description=""/>
+    <listener event_id="template_post_render" execute_order="10" callback_class="bdPaygate_Listener" callback_method="template_post_render" active="1" hint="" description=""/>
+  </code_event_listeners>
+  <cron/>
+  <email_templates>
+    <template title="bdpaygate_failure">
+      <subject><![CDATA[{xen:phrase bdpaygate_failed_transaction_x, 'transactionId={$transactionId}'}]]></subject>
+      <body_text><![CDATA[{xen:phrase bdpaygate_failed_transaction_text,
+	'processorId={$processorId}',
+	'transactionId={$transactionId}',
+	'logType={$logType}',
+	'logMessage={$logMessage}',
+	'logDetails={$logDetails}',
+	'boardTitle={$xenOptions.boardTitle}',
+	'link={xen:adminlink canonical:logs/bdpaygate, '', 'id={$logId}'}'
+}]]></body_text>
+      <body_html><![CDATA[]]></body_html>
+    </template>
+  </email_templates>
+  <email_template_modifications/>
+  <optiongroups>
+    <group group_id="bdPaygate" display_order="9999" debug_only="0"/>
+    <option option_id="bdPaygate0_emailOnFailure" edit_format="textbox" data_type="string" can_backup="1">
+      <default_value></default_value>
+      <edit_format_params></edit_format_params>
+      <sub_options></sub_options>
+      <relation group_id="bdPaygate" display_order="1000"/>
+      <relation group_id="debug" display_order="210"/>
+    </option>
+    <option option_id="bdPaygate0_sandboxMode" edit_format="onoff" data_type="unsigned_integer" can_backup="1">
+      <default_value></default_value>
+      <edit_format_params></edit_format_params>
+      <sub_options></sub_options>
+      <relation group_id="bdPaygate" display_order="1000"/>
+      <relation group_id="debug" display_order="210"/>
+    </option>
+    <option option_id="bdPaygate_enabledCurrencies" edit_format="callback" data_type="array" can_backup="1" validation_class="bdPaygate_Option" validation_method="verifyEnabledCurrencies">
+      <default_value>a:5:{s:3:"usd";i:1;s:3:"cad";i:1;s:3:"aud";i:1;s:3:"gbp";i:1;s:3:"eur";i:1;}</default_value>
+      <edit_format_params>bdPaygate_Option::renderEnabledCurrencies</edit_format_params>
+      <sub_options>*</sub_options>
+      <relation group_id="bdPaygate" display_order="2000"/>
+    </option>
+  </optiongroups>
+  <permissions>
+    <permission_groups/>
+    <permissions/>
+    <interface_groups/>
+  </permissions>
+  <phrases>
+    <phrase title="admin_navigation_bdPaygate_logs" version_id="2" version_string="0.9-dev"><![CDATA[[bd] Paygates Log]]></phrase>
+    <phrase title="bdpaygate_add_buyer" version_id="19" version_string="1.3.1b"><![CDATA[Add Buyer]]></phrase>
+    <phrase title="bdpaygate_buyers" version_id="19" version_string="1.3.1b"><![CDATA[Buyers]]></phrase>
+    <phrase title="bdpaygate_cannot_purchase_self_resource" version_id="9" version_string="1.0.3"><![CDATA[You cannot purchase your own resource.]]></phrase>
+    <phrase title="bdpaygate_cannot_repurchase_resource" version_id="9" version_string="1.0.3"><![CDATA[You have purchased this resource already.]]></phrase>
+    <phrase title="bdpaygate_failed_transaction_text" version_id="5" version_string="1.0-dev"><![CDATA[The following transaction has encountered problem at {boardTitle}:
+
+Processor: {processorId}
+Transaction: {transactionId}
+Type: {logType}
+Message: {logMessage}
+
+The detail log is available here: {link}]]></phrase>
+    <phrase title="bdpaygate_failed_transaction_x" version_id="5" version_string="1.0-dev"><![CDATA[Failed Transaction Notification: {transactionId}]]></phrase>
+    <phrase title="bdpaygate_log" version_id="2" version_string="0.9-dev"><![CDATA[[bd] Paygate Log]]></phrase>
+    <phrase title="bdpaygate_logs" version_id="2" version_string="0.9-dev"><![CDATA[[bd] Paygates Logs]]></phrase>
+    <phrase title="bdpaygate_log_clear" version_id="2" version_string="0.9-dev"><![CDATA[Clear Log]]></phrase>
+    <phrase title="bdpaygate_log_details" version_id="2" version_string="0.9-dev"><![CDATA[Details]]></phrase>
+    <phrase title="bdpaygate_log_processor_info" version_id="2" version_string="0.9-dev"><![CDATA[Processor Info]]></phrase>
+    <phrase title="bdpaygate_log_result" version_id="2" version_string="0.9-dev"><![CDATA[Result]]></phrase>
+    <phrase title="bdpaygate_no_transaction_have_been_logged" version_id="2" version_string="0.9-dev"><![CDATA[No transaction have been logged.]]></phrase>
+    <phrase title="bdpaygate_paypal_call_to_action" version_id="1" version_string="0.9-dev"><![CDATA[Pay with PayPal]]></phrase>
+    <phrase title="bdpaygate_purchased" version_id="19" version_string="1.3.1b"><![CDATA[Purchased]]></phrase>
+    <phrase title="bdpaygate_purchased_for" version_id="19" version_string="1.3.1b"><![CDATA[Purchased For]]></phrase>
+    <phrase title="bdpaygate_purchased_resources" version_id="9" version_string="1.0.3"><![CDATA[Purchased Resources]]></phrase>
+    <phrase title="bdpaygate_purchase_resource" version_id="9" version_string="1.0.3"><![CDATA[Purchase Resource]]></phrase>
+    <phrase title="bdpaygate_purchase_resource_complete" version_id="9" version_string="1.0.3"><![CDATA[Thank you for purchasing this resource.<br/>
+When the payment has been approved, you will be able to download the resource. It will also be available in <a href="{purchased_link}">Purchased Resources</a> page.]]></phrase>
+    <phrase title="bdpaygate_requested_log_entry_not_found" version_id="2" version_string="0.9-dev"><![CDATA[The requested log entry could not be found.]]></phrase>
+    <phrase title="bdpaygate_you_have_not_purchased_resources" version_id="9" version_string="1.0.3"><![CDATA[You have not purchased any resources.]]></phrase>
+    <phrase title="bdpaygate_you_must_purchase_resource_to_download" version_id="9" version_string="1.0.3"><![CDATA[You must purchase the resource in order to download.]]></phrase>
+    <phrase title="bdpaytate_sure_you_want_to_clear_log" version_id="2" version_string="0.9-dev"><![CDATA[Are you sure you want to clear the [bd] Paygate log?]]></phrase>
+    <phrase title="option_bdPaygate0_emailOnFailure" version_id="5" version_string="1.0-dev"><![CDATA[Send Email on Failure]]></phrase>
+    <phrase title="option_bdPaygate0_emailOnFailure_explain" version_id="5" version_string="1.0-dev"><![CDATA[Enter the email address that will receive a notification email if a paygate reports a failed transaction. Leave blank to disable this feature.]]></phrase>
+    <phrase title="option_bdPaygate0_sandboxMode" version_id="5" version_string="1.0-dev"><![CDATA[Use Sandbox Mode for Paygates]]></phrase>
+    <phrase title="option_bdPaygate0_sandboxMode_explain" version_id="3" version_string="1.0-dev"><![CDATA[Turn on this option to test installed paygates. Most system support sandboxing (test transactions without actually transferring money) but you should always check the document before making a payment to prevent financial loss.]]></phrase>
+    <phrase title="option_bdPaygate_enabledCurrencies" version_id="22" version_string="1.3.3"><![CDATA[Enabled Currencies]]></phrase>
+    <phrase title="option_bdPaygate_enabledCurrencies_explain" version_id="22" version_string="1.3.3"><![CDATA[]]></phrase>
+    <phrase title="option_group_bdPaygate" version_id="22" version_string="1.3.3"><![CDATA[[bd] Paygates]]></phrase>
+    <phrase title="option_group_bdPaygate_description" version_id="22" version_string="1.3.3"><![CDATA[]]></phrase>
+  </phrases>
+  <route_prefixes/>
+  <style_properties/>
+  <templates>
+    <template title="bdpaygate.css" version_id="19" version_string="1.3.1b"><![CDATA[#ctrl_bdpaygate_price
+{
+	margin-left: 5px;
+	width: 75px;
+	box-sizing: border-box;
+}
+
+#ctrl_bdpaygate_currency
+{
+	margin-left: 5px;
+	width: 65px;
+	box-sizing: border-box;
+}
+
+.bdpaygate_resource_buyers .memberListItem .extra
+{
+	text-align: right;
+}]]></template>
+    <template title="bdpaygate_account_upgrades" version_id="1" version_string="0.9-dev"><![CDATA[<xen:title>{xen:phrase account_upgrades}</xen:title>
+
+<xen:require css="account_upgrades.css" />
+
+<xen:if is="{$available}">
+	<div class="section">
+		<h3 class="subHeading">{xen:phrase available_upgrades}</h3>
+		<ul>
+		<xen:foreach loop="$available" value="$upgrade">
+			<li class="primaryContent">
+				<div class="upgrade">					
+					<div class="upgradeForm">
+						<xen:if hascontent="true">
+							<div class="cost">{$upgrade.costPhrase}</div>
+							<xen:contentcheck>
+								<xen:foreach loop="$upgrade.paymentForms" key="$processorId" value="$form">
+									<div id="{$processorId}">{xen:raw $form}</div>
+								</xen:foreach>
+							</xen:contentcheck>
+						</xen:if>
+					</div>	
+					
+					<div class="upgradeMain">
+						<h4 class="title">{$upgrade.title}</h4>
+						<xen:if is="{$upgrade.description}">
+							<div class="description">{xen:string nl2br, $upgrade.description}</div>
+						</xen:if>
+					</div>
+				</div>
+			</li>
+		</xen:foreach>
+		</ul>
+	</div>
+</xen:if>
+
+<xen:if is="{$purchased}">
+	<div class="section">
+		<h3 class="subHeading">{xen:phrase purchased_upgrades}</h3>
+		<ul>
+		<xen:foreach loop="$purchased" value="$upgrade">
+			<li class="primaryContent">
+				<div class="upgrade">					
+					<div class="upgradeForm">
+						<xen:if is="{$upgrade.record.end_date}">
+							<div>{xen:phrase expires}: <xen:datetime time="$upgrade.record.end_date" /></div>
+						</xen:if>
+					</div>
+					
+					<div class="upgradeMain">
+						<h4 class="title">{$upgrade.title}</h4>
+						<xen:if is="{$upgrade.description}">
+							<div class="description">{xen:string nl2br, $upgrade.description}</div>
+						</xen:if>
+					</div>
+				</div>
+			</li>
+		</xen:foreach>
+		</ul>
+	</div>
+</xen:if>]]></template>
+    <template title="bdpaygate_resources_tab_links" version_id="9" version_string="1.0.3"><![CDATA[<xen:if is="{$visitor.user_id}"><li><a href="{xen:link resources/purchased}">{xen:phrase bdpaygate_purchased_resources}</a></li></xen:if>]]></template>
+    <template title="bdpaygate_resource_add" version_id="19" version_string="1.3.1b"><![CDATA[<xen:require css="bdpaygate.css" />
+
+<li>
+	<input type="text" name="bdpaygate_price" id="ctrl_bdpaygate_price" class="textCtrl" placeholder="{xen:phrase price}"
+	/><select name="bdpaygate_currency" class="textCtrl" id="ctrl_bdpaygate_currency">
+		<option value="">&nbsp;</option>
+		<xen:foreach loop="$bdPaygate_currencies" key="$key" value="$value">
+		<option value="{$key}">{$value}</option>
+		</xen:foreach>
+	</select>
+</li>]]></template>
+    <template title="bdpaygate_resource_add_buyer" version_id="19" version_string="1.3.1b"><![CDATA[<xen:title>{$resource.title} - {xen:phrase bdpaygate_add_buyer}</xen:title>
+
+<form action="{xen:link resources/add-buyer, $resource}" method="post" class="xenForm AutoValidator" data-redirect="yes">
+
+	<dl class="ctrlUnit">
+		<dt><label for="ctrl_usernames">{xen:phrase user_name}:</label></dt>
+		<dd>
+			<input type="text" name="usernames" class="textCtrl AutoComplete" />
+		</dd>
+	</dl>
+	
+	<dl class="ctrlUnit submitUnit">
+		<dt></dt>
+		<dd><input type="submit" name="save" value="{xen:phrase save_changes}" accesskey="s" class="button primary" /></dd>
+	</dl>
+
+	<input type="hidden" name="_xfToken" value="{$visitor.csrf_token_page}" />
+	<input type="hidden" name="_xfConfirm" value="1" />
+</form>]]></template>
+    <template title="bdpaygate_resource_buyers" version_id="19" version_string="1.3.1b"><![CDATA[<xen:title>{$resource.title} - {xen:phrase bdpaygate_buyers}</xen:title>
+
+<xen:require css="bdpaygate.css" />
+
+<div>
+	<div style="padding: 5px; text-align: right">
+		<a href="{xen:link resources/add-buyer, $resource}" class="callToAction"><span>{xen:phrase bdpaygate_add_buyer}</span></a>
+	</div>
+
+	<ol class="section memberList">
+		<xen:foreach loop="$buyers" value="$user">
+			<xen:include template="member_list_item">
+				<xen:set var="$extraTemplate">
+					<xen:datetime time="{$user.purchase_date}" class="muted"/>
+					
+					<xen:if is="{$user.purchased_amount} AND {$user.purchased_currency}">
+						<div class="muted">
+							{xen:phrase bdpaygate_purchased_for}: {$user.purchased_amount} {$user.purchased_currency}
+						</div>
+					</xen:if>
+				</xen:set>
+			</xen:include>
+		</xen:foreach>
+	</ol>
+</div>]]></template>
+    <template title="bdpaygate_resource_edit" version_id="19" version_string="1.3.1b"><![CDATA[<xen:if is="empty({$resource.is_fileless}) AND empty({$resource.download_url})">
+	<xen:require css="bdpaygate.css" />
+
+	<fieldset>
+		<dl class="ctrlUnit">
+			<dt>{xen:phrase cost}:</dt>
+			<dd>
+				<input type="text" name="bdpaygate_price" value="{$resource.price}" id="ctrl_bdpaygate_price" class="textCtrl" placeholder="{xen:phrase price}"
+				/><select name="bdpaygate_currency" class="textCtrl" id="ctrl_bdpaygate_currency">
+					<option value="">&nbsp;</option>
+					<xen:foreach loop="$bdPaygate_currencies" key="$key" value="$value">
+					<option value="{$key}" {xen:selected '{$resource.currency} == "{$key}"'}>{$value}</option>
+					</xen:foreach>
+				</select>
+			</dd>
+		</dl>
+	</fieldset>
+</xen:if>]]></template>
+    <template title="bdpaygate_resource_purchase" version_id="10" version_string="1.1"><![CDATA[<xen:title>{xen:phrase bdpaygate_purchase_resource}: {$resource.title}</xen:title>
+
+<div class="xenForm formOverlay">
+	<dl class="ctrlUnit">
+		<dt>{xen:phrase cost}:</dt>
+		<dd>{$resource.cost}</dd>
+	</dl>
+
+	<xen:foreach loop="$forms" value="$form">
+		<dl class="ctrlUnit">
+			<dt>&nbsp;</dt>
+			<dd>{xen:raw $form}</dd>
+		</dl>
+	</xen:foreach>
+</div>]]></template>
+    <template title="bdpaygate_resource_purchased" version_id="19" version_string="1.3.1b"><![CDATA[<xen:title>{xen:phrase bdpaygate_purchased_resources}</xen:title>
+
+<xen:require css="resource_list.css" />
+
+<div class="sectionMain">
+	<xen:if is="{$resources}">
+
+		<ol class="resourceList">
+		<xen:foreach loop="$resources" value="$resource">
+			<xen:set var="$resource.cost"></xen:set>
+			<xen:include template="resource_list_item">
+				<xen:set var="$listItemExtraHtml">
+					<a href="{xen:link resources/download, $resource, 'version={$resource.current_version_id}'}">
+						{xen:phrase download}
+					</a>
+				</xen:set>
+			</xen:include>
+		</xen:foreach>
+		</ol>
+
+	<xen:else />
+		<div class="primaryContent">{xen:phrase you_not_currently_watching_any_resources}</div>
+	</xen:if>
+</div>]]></template>
+    <template title="bdpaygate_resource_view_header" version_id="9" version_string="1.0.3"><![CDATA[<xen:if is="{$resource.canPurchase} AND empty({$resource.is_fileless}) AND empty({$resource.download_url})">
+	<xen:if is="!empty({$resource.price}) AND !empty({$resource.currency})">
+		<li>
+			<a href="{xen:link resources/purchase, $resource}" class="OverlayTrigger">
+				{xen:phrase buy_now_for_x, 'cost={$resource.cost}'}
+			</a>
+		</li>
+	</xen:if>
+</xen:if>]]></template>
+    <template title="bdpaygate_resource_view_tabs" version_id="19" version_string="1.3.1b"><![CDATA[<xen:if is="!{$resource.is_fileless} AND {$resource.cost} AND {$resource.user_id} == {$visitor.user_id}">
+	<li class="resourceTabBuyers {xen:if "{$selectedTab} == 'buyers'", active}">
+		<a href="{xen:link resources/buyers, $resource}">{xen:phrase bdpaygate_buyers}</a>
+	</li>
+</xen:if>]]></template>
+  </templates>
+  <public_template_modifications>
+    <modification template="account_upgrades" modification_key="bdpaygate_account_upgrades_forms" description="Replace PayPal form with our forms." execution_order="10" enabled="1" action="preg_replace">
+      <find><![CDATA[#<form action="{\$payPalUrl}" method="post" class="upgradeForm">(.|\r|\n)+</form>#]]></find>
+      <replace><![CDATA[<div class="upgradeForm">
+	<xen:if hascontent="true">
+		<div class="cost">{$upgrade.costPhrase}</div>
+		<xen:contentcheck>
+			<xen:foreach loop="$upgrade.paymentForms" key="$processorId" value="$form">
+				<div id="{$processorId}">{xen:raw $form}</div>
+			</xen:foreach>
+		</xen:contentcheck>
+	</xen:if>
+</div>]]></replace>
+    </modification>
+    <modification template="account_upgrades" modification_key="bdpaygate_account_upgrades_purchased" description="Replace control for purchased upgrades with ours." execution_order="10" enabled="1" action="preg_replace">
+      <find><![CDATA[#(<div class="upgradeForm">(.|\r|\n)+)<xen:if is="{\$upgrade.length_unit} AND {\$upgrade.recurring}">(.|\r|\n)+?</xen:if>#]]></find>
+      <replace><![CDATA[$1]]></replace>
+    </modification>
+    <modification template="resource_view_header" modification_key="bdpaygate_resource_purchase_button" description="Replace download button with purchase button for resource." execution_order="10" enabled="1" action="preg_replace">
+      <find><![CDATA[#<li>(<label class="downloadButton {xen:if(.|\r|\n)+?</label>)</li>#]]></find>
+      <replace><![CDATA[<li>
+	<xen:if is="{$resource.canDownload}">
+		$1
+	<xen:elseif is="{$resource.mustPurchaseToDownload} AND {$resource.canPurchase}" />
+		<label class="downloadButton">
+			<a href="{xen:link resources/purchase, $resource}" class="inner OverlayTrigger">
+				{xen:phrase buy_now_for_x, 'cost={$resource.cost}'}
+				<small class="minorText">{xen:number $resource.attachment.file_size, 'size'} .{$resource.attachment.extension}</small>
+			</a>
+		</label>
+	<xen:else />
+		$1
+	</xen:if>
+</li>]]></replace>
+    </modification>
+  </public_template_modifications>
+  <bb_code_media_sites/>
+</addon>
